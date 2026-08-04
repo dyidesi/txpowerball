@@ -103,7 +103,8 @@ def main():
         strategy_name = st.selectbox(
             "Strategy",
             options=list(STRATEGY_REGISTRY.keys()),
-            index=list(STRATEGY_REGISTRY.keys()).index("Automated (All Strategies)"),
+            index=list(STRATEGY_REGISTRY.keys()).index("Unpopular (Anti-Share)"),
+            help="Start with Unpopular (anti-share) or Wheel for practical multi-ticket play.",
         )
         seed = st.number_input(
             "Random seed (optional)",
@@ -270,6 +271,18 @@ width:42px;height:42px;line-height:42px;font-weight:700;">{pick.powerball:02d}</
                 st.markdown("**Rules**")
                 for r in analysis["rules"]:
                     st.write(f"- {r}")
+            if "pool" in analysis:
+                pool = analysis["pool"]
+                st.markdown("**Wheel pool (white balls)**")
+                st.write(" ".join(f"{n:02d}" for n in pool))
+            if "coverage" in analysis:
+                st.markdown("**Coverage stats**")
+                st.json(analysis["coverage"])
+            if "why_this_matters" in analysis:
+                st.markdown("**Why this matters**")
+                st.write(analysis["why_this_matters"])
+            if "budget_note" in analysis:
+                st.caption(analysis["budget_note"])
             if "column_bounds" in analysis or strategy_name.startswith("Patterns"):
                 st.markdown("**Column layout (1–69)**")
                 st.write(
@@ -289,6 +302,10 @@ width:42px;height:42px;line-height:42px;font-weight:700;">{pick.powerball:02d}</
                 "filter_rejects",
                 "rules",
                 "column_bounds",
+                "pool",
+                "coverage",
+                "why_this_matters",
+                "budget_note",
             }
             extra = {k: v for k, v in analysis.items() if k not in skip}
             if extra:
@@ -366,6 +383,13 @@ width:42px;height:42px;line-height:42px;font-weight:700;">{pick.powerball:02d}</
     with tab_about:
         st.markdown(
             """
+## Practical strategies (math-backed structure / share risk)
+
+| Strategy | What we implement |
+|---|---|
+| **Unpopular (Anti-Share)** | Mostly numbers >31; ban birthday-heavy sets, arithmetic sequences, multiples clusters; diverse endings. Same hit odds; lower jackpot split risk |
+| **Wheel ($10 Coverage)** | Unpopular-leaning pool of 7 whites (for 5 plays) spread across tickets via greedy pair coverage. Structures multi-ticket spend; does not raise jackpot odds |
+
 ## Strategies (from PawnPower)
 
 Source: [pawnpower.net/Home/Strategies](https://pawnpower.net/Home/Strategies)

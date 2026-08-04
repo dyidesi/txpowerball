@@ -9,6 +9,8 @@ Streamlit app that generates Powerball tickets using selection strategies descri
 
 | Strategy | Idea |
 |---|---|
+| **Unpopular (Anti-Share)** | Avoid birthday/sequence/popular sets → lower jackpot split risk (same hit odds) |
+| **Wheel ($10 Coverage)** | 7-number pool → 5 covering lines via greedy pair coverage |
 | Due Numbers | Long-term cold + short-term activity; 1–2 elite due balls per line |
 | Patterns (5-Column) | Frequent column hit templates (e.g. `1-1-0-1-2`) |
 | Bar Graph Balance | Mix cold / mid / hot frequency bands |
