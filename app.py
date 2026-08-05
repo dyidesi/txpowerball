@@ -116,7 +116,7 @@ def main():
         use_seed = seed if seed != 0 else None
 
         refresh = st.button("Refresh history from data.ny.gov")
-        generate = st.button("Generate picks", type="primary", use_container_width=True)
+        generate = st.button("Generate picks", type="primary", width="stretch")
 
         st.divider()
         st.markdown(
@@ -182,7 +182,7 @@ def main():
 
         st.markdown(f"### Tickets — **${st.session_state.get('last_budget', spent):.0f}** session")
         df = ticket_table(result.picks)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
         # Pretty card view
         cols = st.columns(min(5, len(result.picks)))
@@ -233,7 +233,7 @@ width:42px;height:42px;line-height:42px;font-weight:700;">{pick.powerball:02d}</
                     "Powerball match": "Yes" if pb_hit else "No",
                 }
             )
-        st.dataframe(pd.DataFrame(match_rows), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(match_rows), hide_index=True, width="stretch")
 
     with tab_strategy:
         result = st.session_state.get("last_result")
@@ -326,7 +326,7 @@ width:42px;height:42px;line-height:42px;font-weight:700;">{pick.powerball:02d}</
                     "Multiplier": d.multiplier,
                 }
             )
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
         st.subheader("White ball frequency (modern era)")
         wf = white_frequency(drawings)
