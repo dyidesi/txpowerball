@@ -62,13 +62,14 @@ def ticket_table(picks) -> pd.DataFrame:
 
 def main():
     st.set_page_config(
-        page_title="Powerball Strategy Picker",
+        page_title="TxPowerball",
         page_icon="🎱",
         layout="wide",
         initial_sidebar_state="expanded",
     )
 
-    st.title("🎱 Powerball Strategy Number Picker")
+    st.title("🎱 TxPowerball")
+    st.caption("Powerball strategy number picker")
     st.caption(
         "Strategies adapted from "
         "[PawnPower Number Selection Strategies](https://pawnpower.net/Home/Strategies). "

@@ -1,9 +1,19 @@
-# Powerball Strategy Number Picker
+# TxPowerball
 
 Streamlit app that generates Powerball tickets using selection strategies described at
 [PawnPower — Strategies](https://pawnpower.net/Home/Strategies).
 
+**Live app:** [https://txpowerball.streamlit.app](https://txpowerball.streamlit.app)  
+**Repo:** [github.com/dyidesi/txpowerball](https://github.com/dyidesi/txpowerball)
+
 **Default bankroll:** $10 per session → **5 plays** at $2 each.
+
+## Deploy (Streamlit Community Cloud)
+
+1. Open [share.streamlit.io/deploy](https://share.streamlit.io/deploy) and sign in with GitHub (`dyidesi`).
+2. Repository: `dyidesi/txpowerball` · Branch: `main` · Main file: `app.py`
+3. App URL / custom subdomain: **`txpowerball`** → `https://txpowerball.streamlit.app`
+4. Click **Deploy**
 
 ## Strategies
 
