@@ -28,6 +28,12 @@ from utils.data_loader import (
     white_frequency,
     last_seen,
 )
+from utils.ticket_ocr import (
+    TicketParseResult,
+    check_ticket,
+    parse_ticket_image,
+    parse_ticket_text,
+)
 
 PLAY_COST = 2.0
 DEFAULT_BUDGET = 10.0
@@ -314,6 +320,304 @@ def render_analysis(result, strategy_name: str) -> None:
             st.json(extra)
 
 
+def render_ticket_check_tab(drawings) -> None:
+    """Upload / OCR a physical ticket and match against official draw history."""
+    with st.container(border=True):
+        st.markdown("#### Scan your ticket")
+        st.caption(
+            "Upload a clear photo of your Powerball ticket. We OCR the draw date and "
+            "each play, then compare them to the official drawing for that date."
+        )
+
+        uploaded = st.file_uploader(
+            "Ticket image",
+            type=["png", "jpg", "jpeg", "webp", "bmp"],
+            help="Phone photos work best when the ticket fills the frame, is flat, and well lit.",
+            key="ticket_image_upload",
+        )
+
+        with st.expander("Or paste ticket text", icon=":material/content_paste:"):
+            pasted = st.text_area(
+                "OCR / ticket text",
+                height=140,
+                placeholder=(
+                    "DRAW DATE 08/03/2026\n"
+                    "A  08 30 41 48 54  04\n"
+                    "B  06 17 27 48 50  05"
+                ),
+                key="ticket_text_paste",
+                label_visibility="collapsed",
+            )
+
+        col_run, col_date = st.columns([1, 1], vertical_alignment="bottom")
+        with col_date:
+            override = st.date_input(
+                "Draw date override (optional)",
+                value=None,
+                help="Use if OCR misread the date, or the ticket date is hard to read.",
+                key="ticket_date_override",
+            )
+        with col_run:
+            run = st.button(
+                "Check ticket",
+                type="primary",
+                icon=":material/document_scanner:",
+                width="stretch",
+                key="ticket_check_btn",
+            )
+
+    if not run and "ticket_check_result" not in st.session_state:
+        with st.container(border=True):
+            st.markdown("##### How it works")
+            st.markdown(
+                """
+1. Upload a photo of your ticket (or paste the numbers).
+2. We read the **draw date** and every **5 whites + Powerball** line.
+3. We look up that date in official history and score each play
+   (white hits, Powerball hit, standard prize tier).
+
+**Tips:** Good lighting, no glare, ticket flat and in focus. If OCR is messy, paste the numbers manually.
+                """
+            )
+        return
+
+    parse: TicketParseResult | None = None
+    err: str | None = None
+
+    if run:
+        with st.spinner("Reading ticket…"):
+            try:
+                if uploaded is not None:
+                    parse = parse_ticket_image(uploaded.getvalue())
+                elif pasted and pasted.strip():
+                    parse = parse_ticket_text(pasted, engine="manual")
+                else:
+                    err = "Upload a ticket image or paste the ticket text first."
+            except Exception as exc:
+                err = f"Could not read the ticket: {exc}"
+
+        if err:
+            st.error(err, icon=":material/error:")
+            return
+
+        assert parse is not None
+        # Allow editing OCR before final match stored
+        st.session_state["ticket_parse_raw"] = parse.raw_text
+        st.session_state["ticket_parse_engine"] = parse.engine
+        st.session_state["ticket_parse_date"] = parse.draw_date
+        st.session_state["ticket_parse_plays"] = [
+            {
+                "label": p.label,
+                "whites": list(p.whites),
+                "powerball": p.powerball,
+                "source_line": p.source_line,
+            }
+            for p in parse.plays
+        ]
+        st.session_state["ticket_parse_warnings"] = list(parse.warnings)
+
+    # Rebuild parse from session (supports re-check after manual edits)
+    raw = st.session_state.get("ticket_parse_raw", "")
+    if not raw and not st.session_state.get("ticket_parse_plays"):
+        return
+
+    engine = st.session_state.get("ticket_parse_engine", "unknown")
+    stored_plays = st.session_state.get("ticket_parse_plays") or []
+    stored_date = st.session_state.get("ticket_parse_date")
+    warnings = st.session_state.get("ticket_parse_warnings") or []
+
+    with st.container(border=True):
+        st.markdown("#### OCR result")
+        st.caption(f"Engine: `{engine}` · edit anything below if the scan misread a number")
+
+        with st.expander("Raw OCR text", expanded=False, icon=":material/notes:"):
+            edited_raw = st.text_area(
+                "Raw text",
+                value=raw,
+                height=160,
+                key="ticket_raw_edit",
+                label_visibility="collapsed",
+            )
+            if st.button("Re-parse from edited text", icon=":material/restart_alt:"):
+                reparsed = parse_ticket_text(edited_raw, engine=f"{engine}+edit")
+                st.session_state["ticket_parse_raw"] = reparsed.raw_text
+                st.session_state["ticket_parse_engine"] = reparsed.engine
+                st.session_state["ticket_parse_date"] = reparsed.draw_date
+                st.session_state["ticket_parse_plays"] = [
+                    {
+                        "label": p.label,
+                        "whites": list(p.whites),
+                        "powerball": p.powerball,
+                        "source_line": p.source_line,
+                    }
+                    for p in reparsed.plays
+                ]
+                st.session_state["ticket_parse_warnings"] = list(reparsed.warnings)
+                st.rerun()
+
+        for w in warnings:
+            st.warning(w, icon=":material/warning:")
+
+        default_date = override or stored_date
+        final_date = st.date_input(
+            "Draw date used for matching",
+            value=default_date,
+            key="ticket_final_date",
+        )
+
+        # Editable plays table
+        if stored_plays:
+            edit_df = pd.DataFrame(
+                [
+                    {
+                        "Play": p.get("label") or str(i + 1),
+                        "W1": p["whites"][0] if len(p["whites"]) > 0 else None,
+                        "W2": p["whites"][1] if len(p["whites"]) > 1 else None,
+                        "W3": p["whites"][2] if len(p["whites"]) > 2 else None,
+                        "W4": p["whites"][3] if len(p["whites"]) > 3 else None,
+                        "W5": p["whites"][4] if len(p["whites"]) > 4 else None,
+                        "PB": p["powerball"],
+                    }
+                    for i, p in enumerate(stored_plays)
+                ]
+            )
+        else:
+            edit_df = pd.DataFrame(
+                columns=["Play", "W1", "W2", "W3", "W4", "W5", "PB"]
+            )
+
+        st.markdown("##### Plays on ticket")
+        edited = st.data_editor(
+            edit_df,
+            num_rows="dynamic",
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Play": st.column_config.TextColumn("Play", width="small"),
+                "W1": st.column_config.NumberColumn("W1", min_value=1, max_value=69, step=1),
+                "W2": st.column_config.NumberColumn("W2", min_value=1, max_value=69, step=1),
+                "W3": st.column_config.NumberColumn("W3", min_value=1, max_value=69, step=1),
+                "W4": st.column_config.NumberColumn("W4", min_value=1, max_value=69, step=1),
+                "W5": st.column_config.NumberColumn("W5", min_value=1, max_value=69, step=1),
+                "PB": st.column_config.NumberColumn("PB", min_value=1, max_value=26, step=1),
+            },
+            key="ticket_plays_editor",
+        )
+
+        if st.button(
+            "Match against official drawing",
+            type="primary",
+            icon=":material/verified:",
+            key="ticket_match_btn",
+        ):
+            from utils.ticket_ocr import TicketPlay
+
+            plays = []
+            for _, row in edited.iterrows():
+                try:
+                    whites = sorted(
+                        int(row[c])
+                        for c in ("W1", "W2", "W3", "W4", "W5")
+                        if pd.notna(row[c])
+                    )
+                    pb = int(row["PB"])
+                    if len(whites) != 5 or len(set(whites)) != 5:
+                        continue
+                    if not all(1 <= w <= 69 for w in whites):
+                        continue
+                    if not (1 <= pb <= 26):
+                        continue
+                    plays.append(
+                        TicketPlay(
+                            whites=tuple(whites),
+                            powerball=pb,
+                            label=str(row.get("Play") or ""),
+                        )
+                    )
+                except (TypeError, ValueError):
+                    continue
+
+            rebuilt = TicketParseResult(
+                raw_text=st.session_state.get("ticket_raw_edit", raw),
+                draw_date=final_date,
+                plays=plays,
+                confidence_note=f"{len(plays)} play(s) ready to match",
+                engine=engine,
+                warnings=[],
+            )
+            result = check_ticket(rebuilt, drawings, override_date=final_date)
+            st.session_state["ticket_check_result"] = result
+
+    result = st.session_state.get("ticket_check_result")
+    if not result:
+        return
+
+    with st.container(border=True):
+        st.markdown("#### Match result")
+        st.markdown(f"**{result.summary}**")
+
+        if result.drawing is not None:
+            d = result.drawing
+            draw_label = (
+                d.date.strftime("%A, %B %d, %Y")
+                if hasattr(d.date, "strftime")
+                else str(d.date)
+            )
+            st.caption(
+                f"Official drawing · {draw_label} "
+                f"· Whites **{' '.join(f'{n:02d}' for n in d.whites)}** · "
+                f"Powerball **{d.powerball:02d}**"
+                + (f" · Power Play ×{d.multiplier}" if d.multiplier else "")
+            )
+            if result.date_status == "nearest":
+                st.info(
+                    "Matched the nearest official draw date (ticket date was close but not exact).",
+                    icon=":material/info:",
+                )
+            elif result.date_status == "exact":
+                st.success("Draw date matches official history exactly.", icon=":material/check_circle:")
+
+        if result.matches:
+            rows = []
+            for i, m in enumerate(result.matches, 1):
+                rows.append(
+                    {
+                        "Play": m.play.label or str(i),
+                        "Your numbers": m.play.display(),
+                        "White hits": m.white_hits,
+                        "Matched whites": " ".join(f"{n:02d}" for n in m.matched_whites)
+                        or "—",
+                        "Powerball": "Yes" if m.powerball_hit else "No",
+                        "Tier": m.tier_label,
+                        "Prize": m.prize,
+                    }
+                )
+            st.dataframe(
+                pd.DataFrame(rows),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "White hits": st.column_config.ProgressColumn(
+                        "White hits",
+                        min_value=0,
+                        max_value=5,
+                        format="%d",
+                    ),
+                    "Prize": st.column_config.TextColumn("Prize", width="medium"),
+                },
+            )
+
+            any_win = any(m.prize != "$0" for m in result.matches)
+            if any_win:
+                st.balloons()
+            st.caption(
+                "Prize amounts are standard Powerball tiers without Power Play multiplier. "
+                "Confirm with the official lottery site before claiming."
+            )
+        elif result.drawing is not None:
+            st.warning("No plays available to score.", icon=":material/warning:")
+
+
 def main():
     st.set_page_config(
         page_title="TxPowerball",
@@ -459,9 +763,10 @@ def main():
 
     st.space("small")
 
-    tab_pick, tab_strategy, tab_data, tab_about = st.tabs(
+    tab_pick, tab_check, tab_strategy, tab_data, tab_about = st.tabs(
         [
             ":material/confirmation_number: Your tickets",
+            ":material/document_scanner: Check ticket",
             ":material/analytics: Strategy detail",
             ":material/bar_chart: History & stats",
             ":material/menu_book: About strategies",
@@ -569,6 +874,11 @@ def main():
                         ),
                     },
                 )
+
+    # —— Tab: Check ticket (OCR) ————————————————————————————————————
+    with tab_check:
+        if tab_check.open:
+            render_ticket_check_tab(drawings)
 
     # —— Tab: Strategy detail ————————————————————————————————————————
     with tab_strategy:

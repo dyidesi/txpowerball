@@ -45,6 +45,16 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Check ticket (OCR)
+
+On the **Check ticket** tab:
+
+1. Upload a clear photo of your Powerball ticket (or paste the numbers).
+2. The app OCRs the **draw date** and each **5 whites + Powerball** play.
+3. It looks up that date in official history and reports white hits, Powerball match, and standard prize tier.
+
+OCR uses **RapidOCR** (pip-only, no system Tesseract required). You can edit misread numbers before matching.
+
 ## Data
 
 - Bundled CSV: `data/powerball_history.csv` (NY Open Data export)
