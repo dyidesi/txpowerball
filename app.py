@@ -695,7 +695,7 @@ def main():
             "Refresh history",
             width="stretch",
             icon=":material/cloud_sync:",
-            help="Pull latest draws from data.ny.gov",
+            help="Pull latest draws from NY Open Data + Texas Lottery",
         )
 
         st.space("medium")
@@ -707,7 +707,7 @@ def main():
 - One session = your budget above — stick to it
 """
             )
-        st.caption("Data · NY Open Data · modern matrix")
+        st.caption("Data · NY Open Data + Texas Lottery · modern matrix")
 
     # —— Load history ————————————————————————————————————————————————
     try:

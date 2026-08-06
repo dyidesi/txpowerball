@@ -57,8 +57,11 @@ OCR uses **RapidOCR** (pip-only, no system Tesseract required). You can edit mis
 
 ## Data
 
-- Bundled CSV: `data/powerball_history.csv` (NY Open Data export)
-- Sidebar **Refresh history** re-downloads from data.ny.gov
+- Bundled CSV: `data/powerball_history.csv` (merged history)
+- **Primary:** [NY Open Data](https://data.ny.gov/Government-Finance/Lottery-Powerball-Winning-Numbers-Beginning-2010/d6yy-54nr) full export
+- **Secondary:** [Texas Lottery](https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv) winning-numbers CSV (often posts the latest draw sooner)
+- Sources are merged by draw date; NY wins on conflicts, Texas fills missing nights
+- Sidebar **Refresh history** re-downloads both sources
 - Stats use modern matrix only (2015-10-07+): whites 1–69, Powerball 1–26
 
 ## Disclaimer
