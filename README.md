@@ -15,6 +15,12 @@ Streamlit app that generates Powerball tickets using selection strategies descri
 3. App URL / custom subdomain: **`txpowerball`** → `https://txpowerball.streamlit.app`
 4. Click **Deploy**
 
+Repo root includes:
+- `requirements.txt` — Python deps (RapidOCR, headless OpenCV, …)
+- `packages.txt` — apt packages for OCR on Linux Cloud (`libgl1`, `tesseract-ocr`, …)
+
+After changing either file, **reboot the app** (or let Cloud rebuild) so system libraries install.
+
 ## Strategies
 
 | Strategy | Idea |
@@ -53,7 +59,7 @@ On the **Check ticket** tab:
 2. The app OCRs the **draw date** and each **5 whites + Powerball** play.
 3. It looks up that date in official history and reports white hits, Powerball match, and standard prize tier.
 
-OCR uses **RapidOCR** (pip-only, no system Tesseract required). You can edit misread numbers before matching.
+OCR prefers **RapidOCR** (`opencv-python-headless` + ONNX). On Streamlit Cloud, `packages.txt` installs `libgl1` (fixes `libGL.so.1` import errors) and **Tesseract** as a fallback. You can edit misread numbers before matching.
 
 ## Data
 

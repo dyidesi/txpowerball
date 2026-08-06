@@ -672,6 +672,12 @@ def _image_variants(img: Image.Image) -> list[tuple[str, Image.Image]]:
 
 @lru_cache(maxsize=1)
 def _get_rapid_ocr():
+    # Prefer headless OpenCV on Streamlit Cloud (no desktop GUI / libGL).
+    # Import order matters: load headless cv2 before RapidOCR pulls opencv-python.
+    try:
+        import cv2  # noqa: F401 — provided by opencv-python-headless when installed
+    except ImportError:
+        pass
     from rapidocr_onnxruntime import RapidOCR
 
     return RapidOCR()
