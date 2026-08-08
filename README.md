@@ -17,10 +17,12 @@ Streamlit app that generates Powerball tickets using selection strategies descri
 
 Repo root includes:
 - `requirements.txt` — Python deps (RapidOCR, headless OpenCV, …)
-- `packages.txt` — apt packages for OCR on Linux Cloud (`libgl1`, `tesseract-ocr`, …)
+- `packages.txt` — apt leaf packages only: `libgl1` + `tesseract-ocr` (nothing else)
 
-**`packages.txt` format (strict):** one Debian package name per line. **No comments, no prose, no spaces.**  
-Streamlit Cloud feeds the file to `apt-get` with no comment support; a `# …` line will break deploy (Cloud tries to install words like `Streamlit` as packages).
+**`packages.txt` format (strict):**
+- One Debian package name per line. **No comments, no prose, no spaces.**
+- **Only leaf packages** — never pin `libglib2.0-0`, `libsm*`, `libx*` (breaks Debian trixie / t64).
+- Allowlist enforced by `scripts/validate_deploy.py` (CI).
 
 Validate before push:
 

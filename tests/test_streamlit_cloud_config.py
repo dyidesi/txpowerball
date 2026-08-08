@@ -1,8 +1,8 @@
 """Guardrails for Streamlit Community Cloud deploy files.
 
-packages.txt is fed to apt-get with no comment support. A single
-comment line can take down production (see incident: Cloud treated
-'# Streamlit Community Cloud …' as package names).
+Incidents this suite prevents:
+1. Comment lines in packages.txt → apt tries to install 'Streamlit', 'Community', …
+2. Pinning libglib2.0-0 + tesseract-ocr → unmet deps on Debian trixie (t64).
 """
 
 from __future__ import annotations
@@ -12,12 +12,14 @@ import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from validate_deploy import validate_packages_txt, validate_requirements_txt  # noqa: E402
+from validate_deploy import (  # noqa: E402
+    ALLOWED_PACKAGES,
+    validate_packages_txt,
+    validate_requirements_txt,
+)
 
 
 def test_packages_txt_present_and_valid():
@@ -25,6 +27,13 @@ def test_packages_txt_present_and_valid():
     assert path.is_file(), "packages.txt required for Cloud OCR (libGL, tesseract)"
     errors = validate_packages_txt(path)
     assert errors == [], errors
+    names = {
+        ln.strip()
+        for ln in path.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    }
+    assert names == ALLOWED_PACKAGES
+    assert "libglib2.0-0" not in names
 
 
 def test_packages_txt_rejects_comments(tmp_path: Path):
@@ -57,10 +66,32 @@ def test_packages_txt_rejects_invalid_name(tmp_path: Path):
     assert errors, "expected invalid package name to fail"
 
 
-def test_packages_txt_accepts_clean_list(tmp_path: Path):
+def test_packages_txt_accepts_clean_leaf_list(tmp_path: Path):
     good = tmp_path / "packages.txt"
-    good.write_text("libgl1\nlibglib2.0-0\ntesseract-ocr\n", encoding="utf-8")
+    good.write_text("libgl1\ntesseract-ocr\n", encoding="utf-8")
     assert validate_packages_txt(good) == []
+
+
+def test_packages_txt_rejects_libglib_pin(tmp_path: Path):
+    """Production outage: libglib2.0-0 vs libglib2.0-0t64 on trixie."""
+    bad = tmp_path / "packages.txt"
+    bad.write_text("libgl1\nlibglib2.0-0\ntesseract-ocr\n", encoding="utf-8")
+    errors = validate_packages_txt(bad)
+    assert any("libglib2.0-0" in e for e in errors), errors
+
+
+def test_packages_txt_rejects_x11_transitive_pins(tmp_path: Path):
+    bad = tmp_path / "packages.txt"
+    bad.write_text("libgl1\nlibsm6\nlibxext6\nlibxrender1\ntesseract-ocr\n", encoding="utf-8")
+    errors = validate_packages_txt(bad)
+    assert any("libsm6" in e or "forbidden" in e for e in errors), errors
+
+
+def test_packages_txt_rejects_unknown_not_on_allowlist(tmp_path: Path):
+    bad = tmp_path / "packages.txt"
+    bad.write_text("libgl1\ntesseract-ocr\ncurl\n", encoding="utf-8")
+    errors = validate_packages_txt(bad)
+    assert any("ALLOWED_PACKAGES" in e for e in errors), errors
 
 
 def test_requirements_txt_valid():

@@ -7,16 +7,26 @@ Broken `packages.txt` or `requirements.txt` takes the whole site down at **boot*
 
 ### `packages.txt` (hard rules)
 
-Streamlit Cloud runs something equivalent to `apt-get install $(cat packages.txt)`.
+Streamlit Cloud runs something equivalent to `apt-get install` on every line.
 **There is no comment syntax.**
 
 - **Never** put `#` comments, prose, or multi-word lines in `packages.txt`
 - **Exactly one** Debian package name per non-empty line
-- Valid names only: lowercase `a-z0-9+._-` (e.g. `libgl1`, `libglib2.0-0`, `tesseract-ocr`)
+- **Only leaf packages** we need — currently exactly:
+  - `libgl1` (libGL for RapidOCR)
+  - `tesseract-ocr` (OCR fallback)
+- **Never pin transitive libs**: `libglib2.0-0`, `libsm6`, `libxext6`, `libxrender1`, `libffi7`, …
+  Apt resolves those. Pinning old names breaks Debian **trixie** (`libglib2.0-0` vs `libglib2.0-0t64`).
 - Document purpose in **README.md**, not in `packages.txt`
+- To add a package: prove Cloud rebuild works, then add it to `ALLOWED_PACKAGES` in
+  `scripts/validate_deploy.py` **and** to `packages.txt`
 
-A comment like `# Streamlit Cloud OCR` was once shipped and Cloud failed with:
-`Unable to locate package Streamlit` / `Community` / `Cloud` / …
+### Production incidents (do not repeat)
+
+| Failure | Cause |
+|--------|--------|
+| `Unable to locate package Streamlit/Community/…` | Comment line in `packages.txt` |
+| `libglib2.0-0` vs `libglib2.0-0t64` / held broken packages | Pinned `libglib2.0-0` + X11 libs with `tesseract-ocr` on trixie |
 
 ### `requirements.txt`
 

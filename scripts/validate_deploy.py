@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Validate Streamlit Community Cloud deploy config before push.
 
-Streamlit Cloud feeds packages.txt to apt-get with NO comment support:
-every whitespace-separated token becomes a package name. A header like
-  # Streamlit Community Cloud ...
-installs as packages "Streamlit", "Community", "Cloud", etc. and fails deploy.
+Streamlit Cloud feeds packages.txt to apt-get with NO comment support and
+installs every listed name. Failures here take down the live app at boot.
+
+Rules learned from production outages:
+1. No comments / multi-token lines (Cloud installs words as package names).
+2. List only top-level leaf packages; never pin transitive libs
+   (e.g. libglib2.0-0 conflicts with libglib2.0-0t64 on Debian trixie).
+3. packages.txt is an allowlist — only names we have verified on Cloud.
 
 Exit 0 if OK, 1 with a clear error message otherwise.
 """
@@ -20,12 +24,35 @@ ROOT = Path(__file__).resolve().parents[1]
 # Debian package name: starts with alnum, then alnum / + / - / . / _
 _PACKAGE_NAME = re.compile(r"^[a-z0-9][a-z0-9+._-]*$")
 
+# Only packages we deliberately need and have verified. Expand this list
+# only after a successful Streamlit Cloud rebuild with the new package.
+# Prefer leaf packages (tesseract-ocr, libgl1); let apt pull dependencies.
+ALLOWED_PACKAGES: frozenset[str] = frozenset(
+    {
+        "libgl1",  # libGL.so.1 for RapidOCR / residual OpenCV needs
+        "tesseract-ocr",  # OCR fallback binary
+    }
+)
+
+# Known footguns if someone bypasses the allowlist later
+_FORBIDDEN_REASON: dict[str, str] = {
+    "libglib2.0-0": (
+        "conflicts with libglib2.0-0t64 on Debian trixie (Cloud); "
+        "do not pin glib — let tesseract-ocr pull the correct package"
+    ),
+    "libgl1-mesa-glx": "transitional/removed on modern Debian; use libgl1",
+    "libsm6": "transitive X11 dep — do not pin; use opencv-python-headless",
+    "libxext6": "transitive X11 dep — do not pin; use opencv-python-headless",
+    "libxrender1": "transitive X11 dep — do not pin; use opencv-python-headless",
+    "libffi7": "old bullseye-era package; not installable on trixie",
+    "libpcre3": "old package; not installable on trixie",
+}
+
 
 def validate_packages_txt(path: Path) -> list[str]:
     """Return list of error strings (empty if valid)."""
     errors: list[str] = []
     if not path.is_file():
-        # Optional: only require when OCR/system deps are intended
         return errors
 
     text = path.read_text(encoding="utf-8")
@@ -33,7 +60,6 @@ def validate_packages_txt(path: Path) -> list[str]:
         errors.append(f"{path.name}: file is empty (remove it or list packages)")
         return errors
 
-    # BOM or non-UTF8 would already fail; catch common Cloud footguns
     if text.startswith("\ufeff"):
         errors.append(f"{path.name}: remove UTF-8 BOM")
 
@@ -43,7 +69,6 @@ def validate_packages_txt(path: Path) -> list[str]:
         if not line:
             continue
 
-        # Cloud does not support comments — any # is a deploy bug
         if line.startswith("#") or "#" in line:
             errors.append(
                 f"{path.name}:{lineno}: comments are NOT allowed "
@@ -52,7 +77,6 @@ def validate_packages_txt(path: Path) -> list[str]:
             )
             continue
 
-        # One package per line only
         tokens = line.split()
         if len(tokens) != 1:
             errors.append(
@@ -69,17 +93,26 @@ def validate_packages_txt(path: Path) -> list[str]:
             )
             continue
 
-        # Reject tokens that look like English prose, not packages
-        if name[0].isupper() or name in {
-            "Streamlit",
-            "Community",
-            "Cloud",
-            "required",
-            "for",
-            "OCR",
-        }:
+        if name[0].isupper():
             errors.append(
                 f"{path.name}:{lineno}: looks like prose, not a package: {name!r}"
+            )
+            continue
+
+        if name in _FORBIDDEN_REASON:
+            errors.append(
+                f"{path.name}:{lineno}: forbidden package {name!r}: "
+                f"{_FORBIDDEN_REASON[name]}"
+            )
+            continue
+
+        if name not in ALLOWED_PACKAGES:
+            errors.append(
+                f"{path.name}:{lineno}: {name!r} is not in ALLOWED_PACKAGES. "
+                f"Only list verified leaf packages: {sorted(ALLOWED_PACKAGES)}. "
+                f"Do not pin transitive libs (glib/X11). Update "
+                f"scripts/validate_deploy.py ALLOWED_PACKAGES only after a "
+                f"successful Cloud rebuild."
             )
             continue
 
@@ -88,12 +121,20 @@ def validate_packages_txt(path: Path) -> list[str]:
     if not packages and not errors:
         errors.append(f"{path.name}: no packages listed")
 
-    # Duplicates
     seen: set[str] = set()
     for p in packages:
         if p in seen:
             errors.append(f"{path.name}: duplicate package {p!r}")
         seen.add(p)
+
+    # Soft requirement: if OCR is part of the app, both leaf packages should exist
+    required = {"libgl1", "tesseract-ocr"}
+    missing = required - set(packages)
+    if packages and missing and not errors:
+        errors.append(
+            f"{path.name}: missing required OCR packages {sorted(missing)} "
+            f"(need libgl1 for RapidOCR, tesseract-ocr for fallback)"
+        )
 
     return errors
 
@@ -115,12 +156,10 @@ def validate_requirements_txt(path: Path) -> list[str]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        # strip env markers
         req = line.split(";")[0].strip()
         name = re.split(r"[=<>!~\[]", req, maxsplit=1)[0].strip().lower()
         if name == "streamlit":
             has_streamlit = True
-        # opencv: prefer headless on Cloud (GUI build pulls libGL)
         if name == "opencv-python":
             errors.append(
                 f"requirements.txt:{lineno}: use opencv-python-headless "
@@ -143,7 +182,8 @@ def main() -> int:
         for e in errors:
             print(f"  • {e}", file=sys.stderr)
         print(
-            "\nFix packages.txt: one Debian package per line, no comments, no prose.\n"
+            "\nFix packages.txt: only verified leaf packages "
+            f"{sorted(ALLOWED_PACKAGES)}, no comments, no transitive libs.\n"
             "See scripts/validate_deploy.py and README Deploy section.",
             file=sys.stderr,
         )
