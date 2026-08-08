@@ -19,6 +19,16 @@ Repo root includes:
 - `requirements.txt` — Python deps (RapidOCR, headless OpenCV, …)
 - `packages.txt` — apt packages for OCR on Linux Cloud (`libgl1`, `tesseract-ocr`, …)
 
+**`packages.txt` format (strict):** one Debian package name per line. **No comments, no prose, no spaces.**  
+Streamlit Cloud feeds the file to `apt-get` with no comment support; a `# …` line will break deploy (Cloud tries to install words like `Streamlit` as packages).
+
+Validate before push:
+
+```bash
+python scripts/validate_deploy.py
+python -m pytest tests/test_streamlit_cloud_config.py -v
+```
+
 After changing either file, **reboot the app** (or let Cloud rebuild) so system libraries install.
 
 ## Strategies

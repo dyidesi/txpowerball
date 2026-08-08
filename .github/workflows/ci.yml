@@ -1,0 +1,28 @@
+# Fail PRs/pushes that would break Streamlit Community Cloud deploy.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy-config:
+    name: Streamlit Cloud config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate packages.txt + requirements.txt
+        run: python scripts/validate_deploy.py
+
+      - name: Install test deps
+        run: pip install pytest
+
+      - name: Run deploy config tests
+        run: python -m pytest tests/test_streamlit_cloud_config.py -v
