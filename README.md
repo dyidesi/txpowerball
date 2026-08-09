@@ -73,6 +73,19 @@ On the **Check ticket** tab:
 
 OCR prefers **RapidOCR** (`opencv-python-headless` + ONNX). On Streamlit Cloud, `packages.txt` installs `libgl1` (fixes `libGL.so.1` import errors) and **Tesseract** as a fallback. You can edit misread numbers before matching.
 
+### Multi-ticket sheet scan (local CLI)
+
+To scan a photo of many tickets laid out as a grid (e.g. `Powerball-2026-08-08.jpg`):
+
+```bash
+python scripts/scan_ticket_sheet.py Powerball-2026-08-08.jpg --out-dir ./scan_out
+```
+
+Pipeline: **upscale/enhance sheet → detect ticket grid → per-ticket OCR → strict 5+PB parse**.  
+Plays are emitted only when OCR text validates (whites 1–69, Powerball 1–26). Unreadable tickets are marked `failed` — numbers are never invented. Dense low-res sheets (e.g. 768×1024 for ~100 tickets) often need a higher-resolution photo for successful digit OCR.
+
+Unit tests: `python -m pytest tests/test_sheet_scanner.py -v`
+
 ## Data
 
 - Bundled CSV: `data/powerball_history.csv` (merged history)
